@@ -1,0 +1,164 @@
+swagger: "2.0"
+info:
+  version: "0.0.1"
+  title: cue-ball
+# during dev, should point to your local machine
+host: localhost:8000
+# basePath prefixes all resource paths 
+basePath: /
+# 
+schemes:
+  # tip: remove http to make production-grade
+  - http
+  - https
+# format of bodies a client can send (Content-Type)
+consumes:
+  - application/json
+# format of the responses to the client (Accepts)
+produces:
+  - application/json
+paths:
+  /enqueue:
+    x-swagger-router-controller: cue-ball
+    post:
+      description: Adds a job to the queue
+      # used as the method name of the controller
+      operationId: enqueue
+      parameters:
+        - name: job
+          in: body
+          description: A job to enqueue
+          required: true
+          schema:
+            type: object
+            required:
+              - type
+            properties:
+              type:
+                $ref: "#/definitions/PRIORITY_ENUM"
+              payload:
+                type: object
+                additionalProperties: true
+                description: A free-form javascript object with the data you want to pass along to the queue consumer
+      responses:
+        "200":
+          description: Success
+          schema:
+            # a pointer to a definition
+            $ref: "#/definitions/EnqueueResponse"
+        # responses may fall through to errors
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+  /dequeue:
+    x-swagger-router-controller: cue-ball
+    get:
+      description: Retreive a single job from the queue
+      # used as the method name of the controller
+      operationId: dequeue
+      responses:
+        "200":
+          description: Success
+          schema:
+            # a pointer to a definition
+            $ref: "#/definitions/DequeueResponse"
+        # responses may fall through to errors
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+  /conclude/{run_id}:
+    x-swagger-router-controller: cue-ball
+    put:
+      description: Flag a job's run as successful thereby changing the job status to CONCLUDED
+      # used as the method name of the controller
+      operationId: conclude
+      consumes:
+      - application/json
+      - application/octet-stream
+      parameters:
+        - name: run_id
+          in: path
+          description: The run_id of a job attempt to conclude. This can fail if the job has already re-entered the QUEUED state
+          type: string
+          required: true
+      responses:
+        "200":
+          description: Success
+          schema:
+            # a pointer to a definition
+            $ref: "#/definitions/ConcludeResponse"
+        # responses may fall through to errors
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+  /swagger:
+    x-swagger-pipe: swagger_raw
+# complex objects have schema definitions
+definitions:
+  EnqueueResponse:
+    required:
+      - job_id
+    properties:
+      job_id:
+        type: string
+  DequeueResponse:
+    required:
+      - id
+      - type
+      - status
+      - run_id
+      - created_at
+      - queued_at
+      - retry_count
+    properties:
+      id:
+        type: string
+        description: The unique id for this queued job
+      type:
+        $ref: "#/definitions/PRIORITY_ENUM"
+      status:
+        $ref: "#/definitions/STATUS_ENUM"
+      run_id:
+        type: string
+        description: The unique id for this attempted run of the job. This value is used to conclude a job
+      created_at:
+        type: integer
+        description: The date when the job itself was first created
+      queued_at:
+        type: integer
+        description: When the current run of the job was queued. When retry_count is 0 this will be the same as the created_at date but for subsequent runs it will be some date after the created_at date.
+      retry_count:
+        type: integer
+        description: The number of times a job has been retried
+      payload:
+        type: object
+        additionalProperties: true
+        description: The payload passed in during job
+  ConcludeResponse:
+    required:
+      - message
+    properties:
+      message:
+        type: string
+  ErrorResponse:
+    required:
+      - message
+    properties:
+      message:
+        type: string
+  PRIORITY_ENUM:
+    type: string
+    description: The priority of this job. Priority influences the order of dequeueing
+    enum:
+      - TIME_CRITICAL
+      - NOT_TIME_CRITICAL
+  STATUS_ENUM:
+    type: string
+    description: The current status of this job
+    enum:
+      - QUEUED
+      - IN_PROGRESS
+      - CONCLUDED
