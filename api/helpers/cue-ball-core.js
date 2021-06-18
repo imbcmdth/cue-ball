@@ -22,6 +22,10 @@ class CueBallCore {
     // All jobs regardless of state
     this.jobsMap = new Map();
 
+    // Maps a "job_id" to the current run_id
+    // All jobs regardless of state
+    this.jobsToRunsMap = new Map();
+
     // TODO: There should ideally be a status="FAILED" map too
 
     // We track the stats below globally because doing the calculation
@@ -108,6 +112,7 @@ class CueBallCore {
     job.status = 'IN_PROGRESS';
 
     this.runsMap.set(run_id, job);
+    this.jobsToRunsMap.set(job_id, run_id)
 
     const run = {
       id: job.id,// generate
@@ -133,13 +138,48 @@ class CueBallCore {
     if (!this.runsMap.has(run_id)) {
       throw new Error('The provided run_id invalid or run timed out!');
     }
+    // if status == DELETED
+    // return invalid_operation
 
     const job = this.runsMap.get(run_id);
     this.runsMap.delete(run_id);
+    this.jobsToRunsMap.delete(job.id);
 
     // I HATE this...
     job.status = 'CONCLUDED';
   }
+
+  cancelJob (job_id) {
+    // If job doesn't exist
+    // return a not_found error
+    if (!this.jobsMap.has(job_id)) {
+      throw new Error('The provided job_id is invalid!');
+    }
+
+    const job = this.jobsMap.get(job_id);
+
+    if (job.status === 'COMPLETE') {
+      throw new Error('The provided job_id is has already been completed!');
+    }
+
+    // If status == IN_PROGRESS
+    if (job.status === 'IN_PROGRESS') {
+      const run = this.jobsToRunsMap.get(job_id);
+      this.runsMap.delete(run.run_id);
+      this.jobsToRunsMap.delete(job_id);
+    }
+
+    // PENDING or IN_PROGRESS end up here
+    this.jobQueues.forEach((queue) => {
+      queue.remove(job);
+    });
+
+    job.status = 'DELETED';
+  }
+
+//  cancelRun (run_id) {
+
+//  }
 
   timeout (run_id) {
     if (!this.runsMap.has(run_id)) {
@@ -149,6 +189,7 @@ class CueBallCore {
 
     const job = this.runsMap.get(run_id);
     this.runsMap.delete(run_id);
+    this.jobsToRunsMap.delete(job.id);
 
     if (job.retry_count === options.maxRetryCount) {
       // I HATE this...
